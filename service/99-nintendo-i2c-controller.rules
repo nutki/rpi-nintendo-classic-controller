@@ -1,0 +1,2 @@
+ACTION=="add", SUBSYSTEMS=="input", ATTRS{name}=="Nintendo I²C Controller", ENV{ID_INPUT_KEY}=""
+
