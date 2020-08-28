@@ -86,6 +86,13 @@ void uinput_emit(int fd, int type, int code, int val) {
 #define GET_BUTTON(r, i) ((r & (1 << i)) == 0)
 void emit_events(int fd, uint16_t r, uint16_t r_prev, uint8_t *a, uint8_t *a_prev) {
   int syn = 0;
+  if ((r & 0xFF) == 0 || (r & 0xFF00) == 0) {
+    if (debug) {
+      printf("ERR \r");
+      fflush(stdout);
+    }
+    return;
+  }
   for (int i = 0; i < 16; i++) {
     int btn = classic_button_map[i];
     if (btn && GET_BUTTON(r, i) != GET_BUTTON(r_prev, i)) {
@@ -145,7 +152,7 @@ void emit_digital(int fd, char *pr, char *pr_prev) {
 #define RECONNECT_DELAY_US 500000
 #define RETRY_DELAY_US 1000
 #define RETRIES_MAX 5
-#define I2C_DELAY_US 1
+#define I2C_DELAY_US 10
 #define I2C_READ_AT_ZERO_DELAY_US 120
 
 int long_wait = 0;
