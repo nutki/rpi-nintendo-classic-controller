@@ -6,10 +6,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
+#include <stdint.h>
 
 #define UINPUT_DEV_NAME "Nintendo I²C Controller"
-
-#define GET(r, i) ((r & (1 << i)) == 0)
 
 int hq = 0;
 int analog = 0;
@@ -38,7 +37,7 @@ int classic_axis_map[6] = {
   ABS_Y, ABS_RY,
   ABS_Z, ABS_RZ,
 };
-static void setup_abs(int fd, unsigned chan, int min, int max) {
+static void setup_abs(int fd, int chan, int min, int max) {
   struct uinput_abs_setup s = {
     .code = chan,
     .absinfo = { .minimum = min,  .maximum = max },
@@ -83,12 +82,13 @@ void uinput_emit(int fd, int type, int code, int val) {
   write(fd, &ie, sizeof(ie));
 }
 
-void emit_events(int fd, unsigned short r, unsigned short r_prev, unsigned char *a, unsigned char *a_prev) {
+#define GET_BUTTON(r, i) ((r & (1 << i)) == 0)
+void emit_events(int fd, uint16_t r, uint16_t r_prev, uint8_t *a, uint8_t *a_prev) {
   int syn = 0;
   for (int i = 0; i < 16; i++) {
     int btn = classic_button_map[i];
-    if (btn && GET(r, i) != GET(r_prev, i)) {
-      uinput_emit(fd, EV_KEY, btn, GET(r, i));
+    if (btn && GET_BUTTON(r, i) != GET_BUTTON(r_prev, i)) {
+      uinput_emit(fd, EV_KEY, btn, GET_BUTTON(r, i));
       syn = 1;
     }
   }
@@ -100,7 +100,9 @@ void emit_events(int fd, unsigned short r, unsigned short r_prev, unsigned char 
     if (debug) {
       if (analog) printf("axes x:%4d y:%4d rx:%4d ry:%4d ", a[0] - 128, a[2] - 128, a[1] - 128, a[3] - 128);
       if (analog == 6) printf("z:%02X rz:%02X ", a[4] - 128, a[5] - 128);
-      printf("butons %04X\r", r ^ 0xffff);
+      printf("buttons: ");
+      for (int i = 15; i > 0; i--) putchar(GET_BUTTON(r, i) ? " R+H-Lv>^<rXAYBl"[i] : ' ');
+      putchar('\r');
       fflush(stdout);
     }
     uinput_emit(fd, EV_SYN, SYN_REPORT, 0);
@@ -112,13 +114,12 @@ void emit_events(int fd, unsigned short r, unsigned short r_prev, unsigned char 
 #define RY(a) ((a)->ry << 3)
 #define LT(a) (((a)->lt1 + ((a)->lt0 << 3)) << 3)
 #define RT(a) ((a)->rt << 3)
-void to_hq(unsigned char from[4], unsigned char to[6]) {
+void to_hq(uint8_t from[4], uint8_t to[6]) {
   struct {
-    unsigned char lx:6, rx0:2;
-    unsigned char ly:6, rx1:2;
-    unsigned char ry:5, lt0:2;
-    unsigned char rx2:1, rt:5, lt1:3;
-    unsigned short buttons;
+    uint8_t lx:6, rx0:2;
+    uint8_t ly:6, rx1:2;
+    uint8_t ry:5, lt0:2;
+    uint8_t rx2:1, rt:5, lt1:3;
   } *a = (void*)from;
   to[0] = a->lx << 2;
   to[1] = (a->rx2 + (a->rx1 << 1) + (a->rx0 << 3)) << 3;
@@ -131,25 +132,26 @@ void emit_analog(int fd, char *pr, char *pr_prev) {
   unsigned char hq_axes[6], hq_axes_prev[6];
   to_hq(pr, hq_axes);
   to_hq(pr_prev, hq_axes_prev);
-  emit_events(fd, *(unsigned short *)(pr + 4), *(unsigned short *)(pr_prev + 4), hq_axes, hq_axes_prev);
+  emit_events(fd, *(uint16_t *)(pr + 4), *(uint16_t *)(pr_prev + 4), hq_axes, hq_axes_prev);
 }
 void emit_analog_hq(int fd, char *pr, char *pr_prev) {
-  emit_events(fd, *(unsigned short *)(pr + 6), *(unsigned short *)(pr_prev + 6), pr, pr_prev);
+  emit_events(fd, *(uint16_t *)(pr + 6), *(uint16_t *)(pr_prev + 6), pr, pr_prev);
 }
 void emit_digital(int fd, char *pr, char *pr_prev) {
-  emit_events(fd, *(unsigned short *)pr, *(unsigned short *)pr_prev, 0, 0);
+  emit_events(fd, *(uint16_t *)pr, *(uint16_t *)pr_prev, 0, 0);
 }
 
 #define RECONNECT_DELAY_US 500000
 #define RETRY_DELAY_US 1000
 #define RETRIES_MAX 5
 #define I2C_DELAY_US 1
+#define I2C_READ_AT_ZERO_DELAY_US 120
 
 int long_wait = 0;
 int read_bytes(int file, int offset, int c, char *to) {
   int res = i2c_smbus_write_byte(file, offset);
   if (res < 0) return res;
-  usleep(offset ? I2C_DELAY_US : 120);
+  usleep(offset == 0 ? I2C_READ_AT_ZERO_DELAY_US : I2C_DELAY_US);
   for (int i = 0; i < c; i++) {
     res = i2c_smbus_read_byte(file);
     if (res < 0) return res;
@@ -210,22 +212,22 @@ int main(int argc, char **argv) {
   int uinput_fd = uinput_init();
   if (uinput_fd < 0) {
     perror("uinput init");
-    exit(1);
+    exit(EXIT_FAILURE);
   }
   if (file < 0) {
-    perror("open");
-    exit(1);
+    perror("open i2c device");
+    exit(EXIT_FAILURE);
   }
   if (ioctl(file, I2C_SLAVE, 0x52) < 0) {
     perror("ioctl");
-    exit(1);
+    exit(EXIT_FAILURE);
   }
-  unsigned long long r_prev;
+  uint64_t r_prev;
   int connected = 0;
   int hearbeat = 0;
   for(;;) {
     if (connected) {
-      unsigned long long r;
+      uint64_t r;
       int res = read_bytes(file, read_addr, read_len, (void *)&r);
       for(int retries = 0; res < 0 && retries < RETRIES_MAX; retries++) {
         usleep(RETRY_DELAY_US);
@@ -240,7 +242,7 @@ int main(int argc, char **argv) {
       parse_func(uinput_fd, (void*)&r, (void *)&r_prev);
       r_prev = r;
       if (++hearbeat % (hz * 2) == 0) {
-        unsigned char id;
+        uint8_t id;
         read_bytes(file, 0xfc, 1, &id);
         if (id == 0xff /* != 0xa4 */) {
           fprintf(stderr, "controller setup lost: %02x\n", id);
@@ -251,7 +253,7 @@ int main(int argc, char **argv) {
       }
       usleep(1000000 / hz);
     } else {
-      unsigned char id[6];
+      uint8_t id[6];
       if (initialize(file) < 0 || read_bytes(file, 0xfa, 6, id) < 0) {
         perror("init");
         usleep(RECONNECT_DELAY_US);
@@ -275,5 +277,5 @@ int main(int argc, char **argv) {
       connected = 1;
     }
   }
-  return 0;
+  return EXIT_SUCCESS;
 }
