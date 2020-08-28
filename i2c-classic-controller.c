@@ -37,6 +37,7 @@ int classic_axis_map[6] = {
   ABS_Y, ABS_RY,
   ABS_Z, ABS_RZ,
 };
+uint8_t invert_axis[6] = { 0, 0, 1, 1, 0, 0 };
 static void setup_abs(int fd, int chan, int min, int max) {
   struct uinput_abs_setup s = {
     .code = chan,
@@ -93,12 +94,12 @@ void emit_events(int fd, uint16_t r, uint16_t r_prev, uint8_t *a, uint8_t *a_pre
     }
   }
   for (int i = 0; i < analog; i++) if (a[i] != a_prev[i]) {
-    uinput_emit(fd, EV_ABS, classic_axis_map[i], a[i] - 128);
+    uinput_emit(fd, EV_ABS, classic_axis_map[i], invert_axis[i] ? 128 - a[i] : a[i] - 128);
     syn = 1;
   }
   if (syn) {
     if (debug) {
-      if (analog) printf("axes x:%4d y:%4d rx:%4d ry:%4d ", a[0] - 128, a[2] - 128, a[1] - 128, a[3] - 128);
+      if (analog) printf("axes x:%4d y:%4d rx:%4d ry:%4d ", a[0] - 128, 128 - a[2], a[1] - 128, 128 - a[3]);
       if (analog == 6) printf("z:%02X rz:%02X ", a[4] - 128, a[5] - 128);
       printf("buttons: ");
       for (int i = 15; i > 0; i--) putchar(GET_BUTTON(r, i) ? " R+H-Lv>^<rXAYBl"[i] : ' ');
