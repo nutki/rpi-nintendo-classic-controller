@@ -1,0 +1,13 @@
+[Unit]
+Description=Nintendo Classic I2C Controller Service
+
+[Service]
+ExecStart=/usr/local/bin/i2c-classic-controller
+WorkingDirectory=/
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
