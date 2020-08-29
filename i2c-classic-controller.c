@@ -104,7 +104,7 @@ void emit_events(int fd, uint16_t r, uint8_t *a) {
   if (syn) {
     if (debug) {
       if (analog) printf("axes x:%4d y:%4d rx:%4d ry:%4d ", a[0] - 128, 128 - a[2], a[1] - 128, 128 - a[3]);
-      if (analog == 6) printf("z:%02X rz:%02X ", a[4] - 128, a[5] - 128);
+      if (analog == 6) printf("z:%4d rz:%4d ", a[4] - 128, a[5] - 128);
       printf("buttons: ");
       for (int i = 15; i > 0; i--) putchar(GET_BUTTON(r, i) ? " R+H-Lv>^<rXAYBl"[i] : ' ');
       putchar('\r');
