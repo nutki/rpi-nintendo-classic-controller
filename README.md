@@ -87,6 +87,7 @@ the 8-bit accuracy readout.
 
 ```
 sudo make install
+sudo systemctl enable nintendo-i2c-controller
 ```
 This will install a systemd service which will run the driver on startup. Additionally a udev rule will be set
 to remove `ID_INPUT_KEY` property from the uinput node which prevents some software (specifically Kodi) to detect
