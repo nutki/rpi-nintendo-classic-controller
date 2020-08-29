@@ -112,7 +112,7 @@ void emit_events(int fd, uint16_t r, uint8_t *a) {
     }
     uinput_emit(fd, EV_SYN, SYN_REPORT, 0);
   }
-  memcpy(a_prev, a, 6);
+  if (a) memcpy(a_prev, a, 6);
   r_prev = r;
 }
 #define LX(a) ((a)->lx << 2)
