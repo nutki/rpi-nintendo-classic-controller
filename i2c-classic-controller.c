@@ -56,13 +56,8 @@ int uinput_init() {
   }
   /* Adding the basic axes is required for some software to recognize the controller as a gamepad. */
   ioctl(fd, UI_SET_EVBIT, EV_ABS);
-  setup_abs(fd, ABS_X,  -127, 127);
-  setup_abs(fd, ABS_Y,  -127, 127);
-  setup_abs(fd, ABS_RX,  -127, 127);
-  setup_abs(fd, ABS_RY,  -127, 127);
-  if (analog == 6) {
-    setup_abs(fd, ABS_Z,  -127, 127);
-    setup_abs(fd, ABS_RZ,  -127, 127);
+  for (int i = 0; i < (analog == 6 ? 6 : 4); i++) {
+    setup_abs(fd, classic_axis_map[i], -127, 127);
   }
   memset(&usetup, 0, sizeof(usetup));
   usetup.id.bustype = BUS_USB;
@@ -130,8 +125,8 @@ void to_hq(uint8_t from[4], uint8_t to[6]) {
   struct {
     uint8_t lx:6, rx0:2;
     uint8_t ly:6, rx1:2;
-    uint8_t ry:5, lt0:2;
-    uint8_t rx2:1, rt:5, lt1:3;
+    uint8_t ry:5, lt0:2, rx2:1;
+    uint8_t rt:5, lt1:3;
   } *a = (void*)from;
   to[0] = a->lx << 2;
   to[1] = (a->rx2 + (a->rx1 << 1) + (a->rx0 << 3)) << 3;
@@ -158,7 +153,6 @@ void emit_digital(int fd, char *pr) {
 #define I2C_DELAY_US 10
 #define I2C_READ_AT_ZERO_DELAY_US 120
 
-int long_wait = 0;
 int read_bytes(int file, int offset, int c, char *to) {
   int res = i2c_smbus_write_byte(file, offset);
   if (res < 0) return res;
@@ -191,25 +185,25 @@ int main(int argc, char **argv) {
   int opt;
   while ((opt = getopt(argc, argv, "y:f:ha::d")) != -1) {
     switch (opt) {
-    case 'y':
+      case 'y':
         adapter_nr = atoi(optarg);
         break;
-    case 'f':
+      case 'f':
         hz = atoi(optarg);
         if (hz < 1) hz = 1;
         if (hz > 1000) hz = 1000;
         break;
-    case 'h':
+      case 'h':
         hq = 1;
         break;
-    case 'a':
+      case 'a':
         analog = optarg ? atoi(optarg) : 4;
         if (analog != 0 && analog != 4 && analog != 6) analog = 0;
         break;
-    case 'd':
+      case 'd':
         debug = 1;
         break;
-    default:
+      default:
         fprintf(stderr, "Usage: %s [-d] [-f <scan freq=60>] [-y <bus index=1>] [-h] [-a|-a6]\n", argv[0]);
         exit(EXIT_FAILURE);
     }
@@ -237,18 +231,18 @@ int main(int argc, char **argv) {
   int hearbeat = 0;
   for(;;) {
     if (connected) {
-      uint64_t r;
-      int res = read_bytes(file, read_addr, read_len, (void *)&r);
+      uint8_t r[8];
+      int res = read_bytes(file, read_addr, read_len, r);
       for(int retries = 0; res < 0 && retries < RETRIES_MAX; retries++) {
         usleep(RETRY_DELAY_US);
-        res = read_bytes(file, read_addr, read_len, (void *)&r);
+        res = read_bytes(file, read_addr, read_len, r);
       }
       if (res < 0) {
         connected = 0;
         perror("read");
         continue;
       }
-      parse_func(uinput_fd, (void*)&r);
+      parse_func(uinput_fd, r);
       if (++hearbeat % (hz * 2) == 0) {
         uint8_t id;
         read_bytes(file, 0xfc, 1, &id);
