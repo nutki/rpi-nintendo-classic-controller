@@ -13,12 +13,14 @@ Plug side view:
 |  _____  |
 \_/     \_/
 ```
-- 1 - I2C data, Pi pin 3 (SDA)
-- 2 - detect, do not connect
-- 3 - +3.3V, Pi pin 1 (+3.3V)
-- 4 - GND, Pi pin 6 (GND)
-- 5 - not connected
-- 6 - I2C clock, Pi pin 5 (SCL)
+| Controller Pin | Function      | Pi Pin    |
+|---------------:|---------------|-----------|
+| 1              | I2C data      | 3 (SDA)   |
+| 2              | device detect | -         |
+| 3              | +3.3V         | 1 (+3.3V) |
+| 4              | GND           | 6 (GND)   |
+| 5              | not connected | -         |
+| 6              | I2C clock     | 5 (SCL)   |
 
 One way to connect the wires without breaking the plug of your controller is to use one of many "nunchuck" breakout
 boards sold by hobby electronic stores. Some of them seem to be out of stock by now so an alternative would be to
@@ -61,7 +63,7 @@ make
 ## Testing the driver
 
 ```
-./i2c-classic-controller -d
+sudo ./i2c-classic-controller -d
 ```
 If the controller is correctly connected it should display the button events:
 ```
