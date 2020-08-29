@@ -84,7 +84,9 @@ void uinput_emit(int fd, int type, int code, int val) {
 }
 
 #define GET_BUTTON(r, i) ((r & (1 << i)) == 0)
-void emit_events(int fd, uint16_t r, uint16_t r_prev, uint8_t *a, uint8_t *a_prev) {
+void emit_events(int fd, uint16_t r, uint8_t *a) {
+  static uint8_t a_prev[6];
+  static uint16_t r_prev = 0xffff;
   int syn = 0;
   if ((r & 0xFF) == 0 || (r & 0xFF00) == 0) {
     if (debug) {
@@ -115,6 +117,8 @@ void emit_events(int fd, uint16_t r, uint16_t r_prev, uint8_t *a, uint8_t *a_pre
     }
     uinput_emit(fd, EV_SYN, SYN_REPORT, 0);
   }
+  memcpy(a_prev, a, 6);
+  r_prev = r;
 }
 #define LX(a) ((a)->lx << 2)
 #define LY(a) ((a)->ly << 2)
@@ -136,17 +140,16 @@ void to_hq(uint8_t from[4], uint8_t to[6]) {
   to[4] = (a->lt1 + (a->lt0 << 3)) << 3;
   to[5] = a->rt << 3;
 }
-void emit_analog(int fd, char *pr, char *pr_prev) {
-  unsigned char hq_axes[6], hq_axes_prev[6];
+void emit_analog(int fd, char *pr) {
+  uint8_t hq_axes[6];
   to_hq(pr, hq_axes);
-  to_hq(pr_prev, hq_axes_prev);
-  emit_events(fd, *(uint16_t *)(pr + 4), *(uint16_t *)(pr_prev + 4), hq_axes, hq_axes_prev);
+  emit_events(fd, *(uint16_t *)(pr + 4), hq_axes);
 }
-void emit_analog_hq(int fd, char *pr, char *pr_prev) {
-  emit_events(fd, *(uint16_t *)(pr + 6), *(uint16_t *)(pr_prev + 6), pr, pr_prev);
+void emit_analog_hq(int fd, char *pr) {
+  emit_events(fd, *(uint16_t *)(pr + 6), pr);
 }
-void emit_digital(int fd, char *pr, char *pr_prev) {
-  emit_events(fd, *(uint16_t *)pr, *(uint16_t *)pr_prev, 0, 0);
+void emit_digital(int fd, char *pr) {
+  emit_events(fd, *(uint16_t *)pr, 0);
 }
 
 #define RECONNECT_DELAY_US 500000
@@ -213,7 +216,7 @@ int main(int argc, char **argv) {
   }
   int read_len = analog ? hq ? 8 : 6 : 2;
   int read_addr = analog ? 0 : hq ? 6 : 4;
-  void (*parse_func)(int fd, char *pr, char *pr_prev) = analog ? hq ? emit_analog_hq : emit_analog : emit_digital;
+  void (*parse_func)(int fd, char *pr) = analog ? hq ? emit_analog_hq : emit_analog : emit_digital;
 
   snprintf(filename, sizeof(filename) - 1, "/dev/i2c-%d", adapter_nr);
   int file = open(filename, O_RDWR);
@@ -230,7 +233,6 @@ int main(int argc, char **argv) {
     perror("ioctl");
     exit(EXIT_FAILURE);
   }
-  uint64_t r_prev;
   int connected = 0;
   int hearbeat = 0;
   for(;;) {
@@ -243,19 +245,16 @@ int main(int argc, char **argv) {
       }
       if (res < 0) {
         connected = 0;
-        r_prev = 0;
         perror("read");
         continue;
       }
-      parse_func(uinput_fd, (void*)&r, (void *)&r_prev);
-      r_prev = r;
+      parse_func(uinput_fd, (void*)&r);
       if (++hearbeat % (hz * 2) == 0) {
         uint8_t id;
         read_bytes(file, 0xfc, 1, &id);
         if (id == 0xff /* != 0xa4 */) {
           fprintf(stderr, "controller setup lost: %02x\n", id);
           connected = 0;
-          r_prev = 0;
           continue;
         }
       }
