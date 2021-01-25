@@ -1,4 +1,7 @@
 #include <linux/i2c-dev.h>
+#ifdef HAVE_SMBUS_H
+#  include <i2c/smbus.h>
+#endif
 #include <linux/uinput.h>
 #include <sys/ioctl.h>
 #include <stdlib.h>
